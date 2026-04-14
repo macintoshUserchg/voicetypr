@@ -163,14 +163,24 @@ export function AccountSection() {
                     </div>
                   </div>
 
-                  <Button
-                    onClick={handleDeactivate}
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                  >
-                    Deactivate License
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => openExternalLink("https://polar.sh/ideaplexa/portal")}
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                    >
+                      Manage License
+                    </Button>
+                    <Button
+                      onClick={handleDeactivate}
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                    >
+                      Deactivate License
+                    </Button>
+                  </div>
                 </div>
               )}
 
