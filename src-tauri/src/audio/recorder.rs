@@ -231,8 +231,10 @@ impl AudioRecorder {
                         // Only write on the first callback after stop; skip all subsequent ones
                         if !callback_drained_clone.load(Ordering::SeqCst) {
                             // Use lock() not try_lock() here: we're draining, not in the
-                            // real-time path, and the main thread is blocked in the drain
-                            // wait loop so contention is near-impossible.
+                            // real-time hot path. The recording thread is in the drain wait
+                            // loop and won't hold this mutex until after stream.pause().
+                            // CPAL callbacks are serialized per-stream (one thread per stream
+                            // on both WASAPI and CoreAudio), so no concurrent callback contention.
                             if let Ok(mut guard) = writer_clone.lock() {
                                 if let Some(writer) = guard.as_mut() {
                                     for &sample in i16_samples {

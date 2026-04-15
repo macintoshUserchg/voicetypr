@@ -20,9 +20,9 @@ pub fn resample_to_16khz(input: &[f32], input_sample_rate: u32) -> Result<Vec<f3
     let mut resampler = Fft::<f32>::new(
         input_sample_rate as usize,
         16_000,
-        1024,
-        1, // sub_chunks
-        1, // mono
+        1024, // Internal processing block size; process_all_into_buffer handles any input length
+        1,    // sub_chunks
+        1,    // mono
         FixedSync::Both,
     )
     .map_err(|e| format!("Failed to create resampler: {:?}", e))?;
@@ -141,6 +141,13 @@ mod tests {
         let input: Vec<f32> = (0..100).map(|i| i as f32 * 0.01).collect();
         let result = resample_to_16khz(&input, 48_000).unwrap();
         assert!(!result.is_empty(), "Short input must produce some output");
+        let expected_min = (100_f64 * 16_000.0 / 48_000.0).ceil() as usize;
+        assert!(
+            result.len() >= expected_min,
+            "Expected at least {} output samples, got {}",
+            expected_min,
+            result.len()
+        );
     }
 
     #[test]
