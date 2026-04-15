@@ -715,10 +715,11 @@ mod tests {
         let mutex = Arc::new(Mutex::new(Some(String::from("test-value"))));
         let mutex_clone = Arc::clone(&mutex);
 
-        // Spawn a thread that locks the mutex, sets a value, then panics while holding the lock
+        // Spawn a thread that modifies the value, then panics while holding the lock.
+        // If the mutex poisoned, the write would be lost and lock() would fail.
         let handle = thread::spawn(move || {
-            let _guard = mutex_clone.lock();
-            // Guard is held when the thread panics
+            let mut guard = mutex_clone.lock();
+            *guard = Some(String::from("modified-before-panic"));
             panic!("intentional test panic");
         });
 
@@ -726,8 +727,9 @@ mod tests {
         let result = handle.join();
         assert!(result.is_err(), "Thread should have panicked");
 
-        // parking_lot::Mutex should NOT be poisoned — we can still lock it
+        // parking_lot::Mutex should NOT be poisoned — we can still lock it,
+        // and the write from the panicking thread should be visible.
         let value = mutex.lock().clone();
-        assert_eq!(value, Some(String::from("test-value")));
+        assert_eq!(value, Some(String::from("modified-before-panic")));
     }
 }
