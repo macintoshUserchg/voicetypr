@@ -1,3 +1,46 @@
+## [1.12.1](https://github.com/moinulmoin/voicetypr/compare/v1.12.0...v1.12.1) (2026-02-22)
+
+
+### Bug Fixes
+
+* **openai:** handle token and temperature compatibility for gpt-5 ([42300b9](https://github.com/moinulmoin/voicetypr/commit/42300b96148ef6c4bcf05e33ca5ce8708834ffc9))
+
+
+### Refactors
+
+* **ai:** remove anthropic provider support ([2caf98c](https://github.com/moinulmoin/voicetypr/commit/2caf98cbaa1a9e9e5455c449a72f9f0022adda83))
+
+
+
+## [1.12.0](https://github.com/moinulmoin/voicetypr/compare/v1.11.2...v1.12.0) (2026-02-21)
+
+
+### Features
+* add sound on recording end with toggle option ([12095a3](https://github.com/moinulmoin/voicetypr/commit/12095a3de9385918fa44573da63b271db546fc5c))
+* add pill indicator mode dropdown with Never/Always/When Recording options ([7dfa707](https://github.com/moinulmoin/voicetypr/commit/7dfa707c78e18251221d4348d9f12e16c7aced0c))
+* add recording indicator position setting with 6 options and configurable edge offset ([e2b71f5](https://github.com/moinulmoin/voicetypr/commit/e2b71f5b1f2eb76062e5059955cdf8f6f93bd2a9))
+* **macos:** add Intel Mac (x86_64) support ([96abe0f](https://github.com/moinulmoin/voicetypr/commit/96abe0fc1642041ea2cbb7811269c82e45f60dbc))
+* language-aware AI formatting and stale microphone validation ([ccb8f56](https://github.com/moinulmoin/voicetypr/commit/ccb8f569205865cab7c3ab4c6288c09949c19ef3))
+* add multi-provider AI formatting support (OpenAI, Anthropic, Gemini) with curated model lists ([a5084a9](https://github.com/moinulmoin/voicetypr/commit/a5084a9fbc0d242afc9c1da2a43e3eeacc343eb5))
+* add pause media during recording feature ([b501ca1](https://github.com/moinulmoin/voicetypr/commit/b501ca1cf590dba9266b963ac345a8a6ac22126d))
+* add crash reporter UI with GitHub issue integration ([cbd836a](https://github.com/moinulmoin/voicetypr/commit/cbd836a3758e46c697d4d90a320b3aa9c2bd031b))
+
+
+### Bug Fixes
+* **windows:** hide console window flash when starting recording ([99c467d](https://github.com/moinulmoin/voicetypr/commit/99c467db4152a60f4e114b3ff5fc3b371ece4459))
+* **windows:** ARM64 crash fix - disable Vulkan GPU, optimize CPU threads ([1b91ba7](https://github.com/moinulmoin/voicetypr/commit/1b91ba7b2e7d77b33ab0df8b1f4982b498f2b814))
+* **windows:** bundle runtime and harden fresh install behavior ([a9b3577](https://github.com/moinulmoin/voicetypr/commit/a9b357736c4f669aadfbf655910f5eb919c4e4ef))
+* **audio:** prevent app hang when audio device doesn't respond to cleanup ([1a011c6](https://github.com/moinulmoin/voicetypr/commit/1a011c69154678610caf632e39d0bf593588b0da))
+* **audio:** use platform-specific stream cleanup to prevent Windows hang ([816ff98](https://github.com/moinulmoin/voicetypr/commit/816ff98e7cd05070319b980d5267773dcece98cb))
+* add delay after start sound for Bluetooth headset compatibility ([6d4a681](https://github.com/moinulmoin/voicetypr/commit/6d4a681cf48482b05abd33e65d5fd6c0c61d3b57))
+* **ui:** remove unwanted white ring border and add consistent ring styling to pill and toast ([57ddae1](https://github.com/moinulmoin/voicetypr/commit/57ddae1f28819fd1807a6c6023162e6b71319935))
+* **media:** improve pause/resume reliability and use osascript playback toggle on macOS ([c7487fb](https://github.com/moinulmoin/voicetypr/commit/c7487fb7d0b04ed76d3be6659d9eff7f2700a65d))
+* isolate custom and openai provider key/config handling ([48ee91b](https://github.com/moinulmoin/voicetypr/commit/48ee91b9a6ecad6a42e6d16fffdc546868f5cf51))
+* slider showing range instead of single value ([dba6e7c](https://github.com/moinulmoin/voicetypr/commit/dba6e7c9a85eb8ea0925e4e62e9bc4008469acc1))
+* per-request HTTP clients and media resume on recording errors ([9a480ad](https://github.com/moinulmoin/voicetypr/commit/9a480ad3313c9e8fdfb2fcca3f1fab71a9635307))
+
+
+
 ## [1.11.2](https://github.com/moinulmoin/voicetypr/compare/v1.11.1...v1.11.2) (2025-12-16)
 
 
