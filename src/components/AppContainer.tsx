@@ -47,7 +47,78 @@ export function AppContainer() {
   // Use a ref to track if we've just completed onboarding
   const hasJustCompletedOnboarding = useRef(false);
 
-  // Initialize app
+  // Register event listeners once — settings changes must not re-register
+  useEffect(() => {
+    // Listen for no-models event to redirect to onboarding
+    const handleNoModels = () => {
+      console.log("No models available - redirecting to onboarding");
+      setShowOnboarding(true);
+    };
+    window.addEventListener("no-models-available", handleNoModels);
+
+    // Listen for navigate-to-settings event from tray menu
+    registerEvent("navigate-to-settings", () => {
+      console.log("Navigate to settings requested from tray menu");
+      setActiveSection("general");
+    });
+
+    // Listen for manual update checks triggered from tray
+    registerEvent("tray-check-updates", async () => {
+      try {
+        await updateService.checkForUpdatesManually();
+      } catch (e) {
+        console.error("Manual update check failed:", e);
+        toast.error("Failed to check for updates");
+      }
+    });
+
+    // Listen for tray action errors
+    registerEvent("tray-action-error", (event) => {
+      console.error("Tray action error:", event.payload);
+      toast.error(event.payload as string);
+    });
+
+    registerEvent<string>("parakeet-unavailable", (message) => {
+      const description = typeof message === "string" && message.trim().length > 0
+        ? message
+        : "Parakeet is unavailable on this Mac. Please reinstall VoiceTypr or remove the quarantine flag.";
+      console.error("Parakeet unavailable:", description);
+      toast.error("Parakeet Unavailable", {
+        description,
+        duration: 8000
+      });
+    });
+
+    // Listen for license-required event and navigate to License section
+    registerEvent<{ title: string; message: string; action?: string }>(
+      "license-required", 
+      (data) => {
+        console.log("License required event received in AppContainer:", data);
+        setActiveSection("license");
+        toast.error(data.title || "License Required", {
+          description: data.message || "Please purchase or restore a license to continue",
+          duration: 5000
+        });
+      }
+    );
+
+    // Listen for no models error (when trying to record without any models)
+    registerEvent<ErrorEventPayload>("no-models-error", (data) => {
+      console.error("No models available:", data);
+      toast.error(data.title || 'No Models Available', {
+        description:
+          data.message ||
+          'Connect a cloud provider or download a local model in Models before recording.',
+        duration: 8000
+      });
+    });
+
+    return () => {
+      window.removeEventListener("no-models-available", handleNoModels);
+    };
+  }, [registerEvent]);
+
+  // Settings-dependent initialization (onboarding check, cleanup, update service)
   useEffect(() => {
     const init = async () => {
       try {
@@ -78,83 +149,17 @@ export function AppContainer() {
             // Window focus is best-effort; dialog still renders
           }
         }
-        // Listen for no-models event to redirect to onboarding
-        const handleNoModels = () => {
-          console.log("No models available - redirecting to onboarding");
-          setShowOnboarding(true);
-        };
-        window.addEventListener("no-models-available", handleNoModels);
-
-        // Listen for navigate-to-settings event from tray menu
-        registerEvent("navigate-to-settings", () => {
-          console.log("Navigate to settings requested from tray menu");
-          setActiveSection("overview");
-        });
-
-        // Listen for manual update checks triggered from tray
-        registerEvent("tray-check-updates", async () => {
-          try {
-            await updateService.checkForUpdatesManually();
-          } catch (e) {
-            console.error("Manual update check failed:", e);
-            toast.error("Failed to check for updates");
-          }
-        });
-
-        // Listen for tray action errors
-        registerEvent("tray-action-error", (event) => {
-          console.error("Tray action error:", event.payload);
-          toast.error(event.payload as string);
-        });
-
-        registerEvent<string>("parakeet-unavailable", (message) => {
-          const description = typeof message === "string" && message.trim().length > 0
-            ? message
-            : "Parakeet is unavailable on this Mac. Please reinstall VoiceTypr or remove the quarantine flag.";
-          console.error("Parakeet unavailable:", description);
-          toast.error("Parakeet Unavailable", {
-            description,
-            duration: 8000
-          });
-        });
-
-        // Listen for license-required event and navigate to License section
-        registerEvent<{ title: string; message: string; action?: string }>(
-          "license-required", 
-          (data) => {
-            console.log("License required event received in AppContainer:", data);
-            // Navigate to License section to show license management
-            setActiveSection("license");
-            // Show a toast to inform the user
-            toast.error(data.title || "License Required", {
-              description: data.message || "Please purchase or restore a license to continue",
-              duration: 5000
-            });
-          }
-        );
-
-        // Listen for no models error (when trying to record without any models)
-        registerEvent<ErrorEventPayload>("no-models-error", (data) => {
-          console.error("No models available:", data);
-          toast.error(data.title || 'No Models Available', {
-            description:
-              data.message ||
-              'Connect a cloud provider or download a local model in Models before recording.',
-            duration: 8000
-          });
-        });
-
-        return () => {
-          window.removeEventListener("no-models-available", handleNoModels);
-          updateService.dispose();
-        };
       } catch (error) {
         console.error("Failed to initialize:", error);
       }
     };
 
     init();
-  }, [registerEvent, settings]);
+
+    return () => {
+      updateService.dispose();
+    };
+  }, [settings]);
 
   // Mark when onboarding is being shown
   useEffect(() => {
