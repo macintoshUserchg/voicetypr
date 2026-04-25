@@ -2,9 +2,9 @@ use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::audio::recorder::AudioRecorder;
-use crate::commands::license::check_license_status_internal;
+use crate::commands::license::{check_license_status_internal, CachedLicense};
 use crate::commands::settings::{get_settings, resolve_pill_indicator_mode, Settings};
-use crate::license::{LicenseState, LicenseStatus};
+use crate::license::LicenseState;
 use crate::media::MediaPauseController;
 use crate::parakeet::messages::ParakeetResponse;
 use crate::parakeet::ParakeetManager;
@@ -552,8 +552,18 @@ fn select_best_fallback_model(
     })
 }
 
-fn license_allows_recording(status: &LicenseStatus) -> bool {
-    matches!(status.status, LicenseState::Licensed | LicenseState::Trial)
+fn cached_license_allows_recording(cached: &CachedLicense) -> bool {
+    match cached.status.status {
+        LicenseState::Licensed => true,
+        LicenseState::Trial => cached
+            .status
+            .trial_days_left
+            .and_then(|days| u64::try_from(days).ok())
+            .filter(|days| *days > 0)
+            .map(|days| cached.age() < std::time::Duration::from_secs(days * 24 * 60 * 60))
+            .unwrap_or(false),
+        LicenseState::Expired | LicenseState::None => false,
+    }
 }
 
 /// Pre-recording validation using the readiness state
@@ -601,7 +611,7 @@ async fn validate_recording_requirements(app: &AppHandle) -> Result<(), String> 
                     cached.age()
                 );
                 let fallback =
-                    license_allows_recording(&cached.status).then(|| cached.status.clone());
+                    cached_license_allows_recording(cached).then(|| cached.status.clone());
                 (None, fallback)
             }
         } else {
@@ -1110,7 +1120,7 @@ pub async fn start_recording(
             }
 
             update_recording_state(&app, RecordingState::Idle, None);
-            return Err("PTT key released during audio initialization".to_string());
+            return Err(PTT_START_ABORTED_AFTER_RELEASE.to_string());
         }
     }
 
