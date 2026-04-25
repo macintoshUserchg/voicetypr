@@ -553,7 +553,7 @@ fn select_best_fallback_model(
 }
 
 fn cached_license_allows_recording(cached: &CachedLicense) -> bool {
-    match cached.status.status {
+    match &cached.status.status {
         LicenseState::Licensed => true,
         LicenseState::Trial => cached
             .status
