@@ -37,7 +37,9 @@ fn ensure_trailing_sentence_space(text: &str) -> String {
     // Preserve explicit structural whitespace. The helper is for ergonomic
     // sentence spacing, not for rewriting multiline text or caller-provided
     // newlines/tabs at the insertion boundary.
-    if without_trailing_spaces.ends_with(['\n', '\r', '\t'])
+    if without_trailing_spaces.ends_with('\n')
+        || without_trailing_spaces.ends_with('\r')
+        || without_trailing_spaces.ends_with('\t')
         || without_trailing_spaces.contains('\n')
         || without_trailing_spaces.contains('\r')
     {
@@ -57,7 +59,8 @@ fn ensure_trailing_sentence_space(text: &str) -> String {
     }
 
     // Detect contexts where a trailing space would be harmful.
-    let semantic_end = without_trailing_spaces.trim_end_matches(closing_punctuation);
+    let semantic_end =
+        without_trailing_spaces.trim_end_matches(|c| closing_punctuation.contains(&c));
     let before_period = semantic_end.strip_suffix('.').unwrap_or(semantic_end);
     let looks_like_url = semantic_end.contains("://")
         || before_period.ends_with(".com")
