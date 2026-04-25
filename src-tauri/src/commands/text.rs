@@ -29,22 +29,37 @@ static IS_INSERTING: AtomicBool = AtomicBool::new(false);
 /// - `foo@bar.com.` → `foo@bar.com.` (email-like, skip)
 /// - `x = y.` → `x = y.` (code-like, skip)
 fn ensure_trailing_sentence_space(text: &str) -> String {
-    let trimmed = text.trim_end();
-    if trimmed.is_empty() {
+    let without_trailing_spaces = text.trim_end_matches(' ');
+    if without_trailing_spaces.is_empty() {
         return text.to_string();
     }
 
-    let last_char = trimmed.chars().last().unwrap();
-
-    // Only add space after sentence-ending punctuation
-    if !matches!(last_char, '.' | '!' | '?') {
+    // Preserve explicit structural whitespace. The helper is for ergonomic
+    // sentence spacing, not for rewriting multiline text or caller-provided
+    // newlines/tabs at the insertion boundary.
+    if without_trailing_spaces.ends_with(['\n', '\r', '\t'])
+        || without_trailing_spaces.contains('\n')
+        || without_trailing_spaces.contains('\r')
+    {
         return text.to_string();
     }
 
-    // Detect contexts where a trailing space would be harmful
-    // Strip the trailing period to check what precedes it for TLD patterns
-    let before_period = trimmed.strip_suffix('.').unwrap_or(trimmed);
-    let looks_like_url = trimmed.contains("://")
+    let closing_punctuation = ['"', '\'', '”', '’', ')', ']', '}'];
+    let sentence_end = without_trailing_spaces
+        .chars()
+        .rev()
+        .find(|c| !closing_punctuation.contains(c));
+
+    // Only add space after sentence-ending punctuation, allowing closing
+    // quotes/brackets after the punctuation.
+    if !matches!(sentence_end, Some('.' | '!' | '?')) {
+        return text.to_string();
+    }
+
+    // Detect contexts where a trailing space would be harmful.
+    let semantic_end = without_trailing_spaces.trim_end_matches(closing_punctuation);
+    let before_period = semantic_end.strip_suffix('.').unwrap_or(semantic_end);
+    let looks_like_url = semantic_end.contains("://")
         || before_period.ends_with(".com")
         || before_period.ends_with(".org")
         || before_period.ends_with(".net")
@@ -53,17 +68,20 @@ fn ensure_trailing_sentence_space(text: &str) -> String {
         || before_period.ends_with(".app");
     // Email-like: contains @ with no spaces (even if followed by period)
     let looks_like_email = before_period.contains('@') && !before_period.contains(' ');
-    let looks_like_code = trimmed.contains("=") || trimmed.contains("->") || trimmed.contains("::") || trimmed.contains("{") || trimmed.contains("}") || trimmed.contains(";");
-    let has_newlines = trimmed.contains('\n');
+    let looks_like_code = semantic_end.contains('=')
+        || semantic_end.contains("->")
+        || semantic_end.contains("::")
+        || semantic_end.contains('{')
+        || semantic_end.contains('}')
+        || semantic_end.contains(';');
 
-    if looks_like_url || looks_like_email || looks_like_code || has_newlines {
+    if looks_like_url || looks_like_email || looks_like_code {
         return text.to_string();
     }
 
-    // Preserve exactly one trailing space
-    format!("{} ", trimmed)
+    // Preserve exactly one trailing space after the original closing punctuation.
+    format!("{} ", without_trailing_spaces)
 }
-
 
 #[tauri::command]
 pub async fn insert_text(app: tauri::AppHandle, text: String) -> Result<(), String> {
@@ -516,7 +534,6 @@ fn paste_linux() -> Result<(), SimulateError> {
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -555,10 +572,7 @@ mod tests {
 
     #[test]
     fn no_sentence_end_no_space() {
-        assert_eq!(
-            ensure_trailing_sentence_space("Hello world"),
-            "Hello world"
-        );
+        assert_eq!(ensure_trailing_sentence_space("Hello world"), "Hello world");
     }
 
     #[test]
@@ -587,10 +601,7 @@ mod tests {
 
     #[test]
     fn code_like_no_space() {
-        assert_eq!(
-            ensure_trailing_sentence_space("x = y."),
-            "x = y."
-        );
+        assert_eq!(ensure_trailing_sentence_space("x = y."), "x = y.");
     }
 
     #[test]
@@ -602,19 +613,34 @@ mod tests {
     }
 
     #[test]
-    fn empty_string_unchanged() {
+    fn trailing_newline_is_preserved() {
+        assert_eq!(ensure_trailing_sentence_space("Hello.\n"), "Hello.\n");
+    }
+
+    #[test]
+    fn closing_quote_gets_trailing_space() {
         assert_eq!(
-            ensure_trailing_sentence_space(""),
-            ""
+            ensure_trailing_sentence_space("He said \"yes.\""),
+            "He said \"yes.\" "
         );
     }
 
     #[test]
-    fn only_whitespace_unchanged() {
+    fn closing_paren_gets_trailing_space() {
         assert_eq!(
-            ensure_trailing_sentence_space("   "),
-            "   "
+            ensure_trailing_sentence_space("That works (really!)"),
+            "That works (really!) "
         );
+    }
+
+    #[test]
+    fn empty_string_unchanged() {
+        assert_eq!(ensure_trailing_sentence_space(""), "");
+    }
+
+    #[test]
+    fn only_whitespace_unchanged() {
+        assert_eq!(ensure_trailing_sentence_space("   "), "   ");
     }
 
     #[test]
@@ -637,9 +663,6 @@ mod tests {
 
     #[test]
     fn semicolon_code_like_no_space() {
-        assert_eq!(
-            ensure_trailing_sentence_space("let x = 5;"),
-            "let x = 5;"
-        );
+        assert_eq!(ensure_trailing_sentence_space("let x = 5;"), "let x = 5;");
     }
 }
