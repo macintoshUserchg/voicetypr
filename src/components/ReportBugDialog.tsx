@@ -93,22 +93,25 @@ export function ReportBugDialog({ isOpen, onClose }: ReportBugDialogProps) {
     const data = await buildAndGather();
     if (!data) return;
 
-    const fullBody = buildReportBody(data);
+    let emailBody = buildReportBody(data);
     const subject = 'VoiceTypr Bug Report';
-    const emailBody = encodeURIComponent(fullBody).length > 8_000
-      ? buildReportBody(data, {
-          includeLog: false,
-          omittedLogNote:
-            'The latest log excerpt was too large for an email draft. Use Copy Report in VoiceTypr if support asks for the full generated report.',
-        })
-      : fullBody;
+    let encodedBody = encodeURIComponent(emailBody);
 
-    if (encodeURIComponent(emailBody).length > 8_000) {
+    if (encodedBody.length > 8_000) {
+      emailBody = buildReportBody(data, {
+        includeLog: false,
+        omittedLogNote:
+          'The latest log excerpt was too large for an email draft. Use Copy Report in VoiceTypr if support asks for the full generated report.',
+      });
+      encodedBody = encodeURIComponent(emailBody);
+    }
+
+    if (encodedBody.length > 8_000) {
       toast.error('This report is too long for an email draft. Please use Copy Report instead.');
       return;
     }
 
-    const mailtoUrl = `mailto:support@voicetypr.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(emailBody)}`;
+    const mailtoUrl = `mailto:support@voicetypr.com?subject=${encodeURIComponent(subject)}&body=${encodedBody}`;
 
     try {
       await open(mailtoUrl);

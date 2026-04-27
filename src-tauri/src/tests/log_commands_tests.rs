@@ -222,6 +222,15 @@ mod tests {
     }
 
     #[test]
+    fn test_redact_license_pattern_keeps_unlabeled_build_ids() {
+        let input = "Build 2022-04-15-RELEASE completed before license ABCD-1234-EFGH-5678-IJKL";
+        let redacted = redact_log_content(input);
+        assert!(redacted.contains("2022-04-15-RELEASE"));
+        assert!(!redacted.contains("ABCD-1234-EFGH-5678-IJKL"));
+        assert!(redacted.contains("license [LICENSE_REDACTED]"));
+    }
+
+    #[test]
     fn test_redact_external_absolute_paths() {
         let input = "Saved image to /Volumes/private-drive/customer/audio/output.png and C:\\Temp\\voice.txt";
         let redacted = redact_log_content(input);

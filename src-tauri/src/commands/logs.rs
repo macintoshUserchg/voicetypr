@@ -238,11 +238,15 @@ pub fn redact_log_content(content: &str) -> String {
     });
     result = sk_key_re.replace_all(&result, "$1[REDACTED]").to_string();
 
-    // License-key-looking patterns: groups of alphanum separated by dashes.
-    let license_re = LICENSE_RE
-        .get_or_init(|| regex::Regex::new(r"\b[A-Z0-9]{4,8}(?:-[A-Z0-9]{4,8}){3,}\b").unwrap());
+    // License-looking values only when surrounding text labels them as licenses.
+    let license_re = LICENSE_RE.get_or_init(|| {
+        regex::Regex::new(
+            r#"(?i)\b(license(?:\s+(?:key|id))?\s+)['\"]?[A-Z0-9]{4,8}(?:-[A-Z0-9]{4,8}){3,}['\"]?"#,
+        )
+        .unwrap()
+    });
     result = license_re
-        .replace_all(&result, "[LICENSE_REDACTED]")
+        .replace_all(&result, "$1[LICENSE_REDACTED]")
         .to_string();
 
     // Email addresses.
