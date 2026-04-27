@@ -60,7 +60,7 @@ use commands::{
     device::get_device_id,
     keyring::{keyring_delete, keyring_get, keyring_has, keyring_set},
     license::*,
-    logs::{clear_old_logs, get_log_directory, open_logs_folder},
+    logs::{clear_old_logs, get_latest_log_for_bug_report, get_log_directory, open_logs_folder},
     model::{
         cancel_download, delete_model, download_model, get_model_status, list_downloaded_models,
         preload_model, verify_model,
@@ -1108,6 +1108,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             keyring_has,
             validate_and_cache_soniox_key,
             clear_soniox_key_cache,
+            get_latest_log_for_bug_report,
             get_log_directory,
             open_logs_folder,
             get_autostart_status,
