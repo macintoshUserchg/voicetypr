@@ -3,13 +3,9 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockInstance } from 'vitest';
 import { ReportBugDialog } from './ReportBugDialog';
-import { gatherManualReportData, buildReportBody } from '@/utils/crashReport';
-import { open } from '@tauri-apps/plugin-shell';
+import { gatherManualReportData, buildReportBody, submitManualReport } from '@/utils/crashReport';
 import { toast } from 'sonner';
 
-vi.mock('@tauri-apps/plugin-shell', () => ({
-  open: vi.fn().mockResolvedValue(undefined),
-}));
 
 vi.mock('sonner', () => ({
   toast: {
@@ -27,6 +23,7 @@ vi.mock('@/contexts/SettingsContext', () => ({
 vi.mock('@/utils/crashReport', () => ({
   gatherManualReportData: vi.fn(),
   buildReportBody: vi.fn(),
+  submitManualReport: vi.fn(),
 }));
 
 let writeTextMock: MockInstance<(data: string) => Promise<void>>;
@@ -49,6 +46,7 @@ describe('ReportBugDialog', () => {
       logStatusNote: '',
     });
     vi.mocked(buildReportBody).mockReturnValue('REPORT BODY with The app broke');
+    vi.mocked(submitManualReport).mockResolvedValue({ success: true, message: 'Report submitted' });
     if (!navigator.clipboard) {
       Object.defineProperty(navigator, 'clipboard', {
         configurable: true,
@@ -58,20 +56,20 @@ describe('ReportBugDialog', () => {
     writeTextMock = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
   });
 
-  it('requires a message before opening an email draft', async () => {
+  it('requires a message before submitting', async () => {
     const user = userEvent.setup();
 
     render(<ReportBugDialog isOpen onClose={vi.fn()} />);
 
-    await user.click(screen.getByRole('button', { name: /email support/i }));
+    await user.click(screen.getByRole('button', { name: /submit/i }));
 
     expect(screen.getByText(/please describe the issue/i)).toBeInTheDocument();
     expect(gatherManualReportData).not.toHaveBeenCalled();
-    expect(open).not.toHaveBeenCalled();
+    expect(submitManualReport).not.toHaveBeenCalled();
     expect(screen.getByLabelText(/message/i)).toHaveAttribute('aria-required', 'true');
   });
 
-  it('opens an email addressed to support with the generated report body', async () => {
+  it('submits a report directly to support', async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
 
@@ -80,10 +78,10 @@ describe('ReportBugDialog', () => {
     await user.type(screen.getByLabelText(/name/i), 'Moin');
     await user.type(screen.getByLabelText(/email/i), 'moin@example.com');
     await user.type(screen.getByLabelText(/message/i), 'The app broke');
-    await user.click(screen.getByRole('button', { name: /email support/i }));
+    await user.click(screen.getByRole('button', { name: /submit/i }));
 
     await waitFor(() => {
-      expect(open).toHaveBeenCalledTimes(1);
+      expect(submitManualReport).toHaveBeenCalledTimes(1);
     });
     expect(gatherManualReportData).toHaveBeenCalledWith(
       'Moin',
@@ -91,8 +89,10 @@ describe('ReportBugDialog', () => {
       'The app broke',
       'base.en'
     );
-    expect(String(vi.mocked(open).mock.calls[0][0])).toContain('mailto:support@voicetypr.com');
-    expect(String(vi.mocked(open).mock.calls[0][0])).toContain(encodeURIComponent('REPORT BODY with The app broke'));
+    expect(submitManualReport).toHaveBeenCalledWith(expect.objectContaining({
+      message: 'The app broke',
+      logContent: 'INFO log line',
+    }));
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -118,25 +118,27 @@ describe('ReportBugDialog', () => {
 
 
 
-  it('does not open an email draft when the log-omitted body is still too long', async () => {
+  it('shows an error and keeps the dialog open when submit fails', async () => {
     const user = userEvent.setup();
-    vi.mocked(buildReportBody).mockReturnValue('x'.repeat(8_100));
+    const onClose = vi.fn();
+    vi.mocked(submitManualReport).mockResolvedValueOnce({
+      success: false,
+      message: 'Too many reports. Please try again later.',
+    });
 
-    render(<ReportBugDialog isOpen onClose={vi.fn()} />);
+    render(<ReportBugDialog isOpen onClose={onClose} />);
 
     await user.type(screen.getByLabelText(/message/i), 'A very long issue report');
-    await user.click(screen.getByRole('button', { name: /email support/i }));
+    await user.click(screen.getByRole('button', { name: /submit/i }));
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith(
-        'This report is too long for an email draft. Please shorten your message or use Copy Report.'
-      );
+      expect(toast.error).toHaveBeenCalledWith('Too many reports. Please try again later.');
     });
-    expect(open).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
 
-  it('still builds a report when the latest log is unavailable', async () => {
+  it('still submits when the latest log is unavailable', async () => {
     const user = userEvent.setup();
     vi.mocked(gatherManualReportData).mockResolvedValueOnce({
       message: 'No log case',
@@ -156,12 +158,12 @@ describe('ReportBugDialog', () => {
     render(<ReportBugDialog isOpen onClose={vi.fn()} />);
 
     await user.type(screen.getByLabelText(/message/i), 'No log case');
-    await user.click(screen.getByRole('button', { name: /email support/i }));
+    await user.click(screen.getByRole('button', { name: /submit/i }));
 
     await waitFor(() => {
-      expect(open).toHaveBeenCalledTimes(1);
+      expect(submitManualReport).toHaveBeenCalledTimes(1);
     });
-    expect(buildReportBody).toHaveBeenCalledWith(expect.objectContaining({
+    expect(submitManualReport).toHaveBeenCalledWith(expect.objectContaining({
       logFileName: null,
       logStatusNote: 'No log file found.',
     }));

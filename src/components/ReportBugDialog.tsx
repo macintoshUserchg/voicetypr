@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react';
-import { Bug, Copy, Check, Mail } from 'lucide-react';
-import { open } from '@tauri-apps/plugin-shell';
+import { Bug, Copy, Check, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -17,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   gatherManualReportData,
   buildReportBody,
+  submitManualReport,
   type ManualReportData,
 } from '@/utils/crashReport';
 import { useSettings } from '@/contexts/SettingsContext';
@@ -89,37 +89,29 @@ export function ReportBugDialog({ isOpen, onClose }: ReportBugDialogProps) {
     }
   };
 
-  const handleSubmitEmail = async () => {
+  const handleSubmitReport = async () => {
     const data = await buildAndGather();
     if (!data) return;
 
-    let emailBody = buildReportBody(data);
-    const subject = 'VoiceTypr Bug Report';
-    let encodedBody = encodeURIComponent(emailBody);
-
-    if (encodedBody.length > 8_000) {
-      emailBody = buildReportBody(data, {
-        includeLog: false,
-        omittedLogNote:
-          'The latest log excerpt was too large for an email draft. Use Copy Report in VoiceTypr if support asks for the full generated report.',
-      });
-      encodedBody = encodeURIComponent(emailBody);
-    }
-
-    if (encodedBody.length > 8_000) {
-      toast.error('This report is too long for an email draft. Please shorten your message or use Copy Report.');
-      return;
-    }
-
-    const mailtoUrl = `mailto:support@voicetypr.com?subject=${encodeURIComponent(subject)}&body=${encodedBody}`;
+    const actionId = actionIdRef.current;
+    setIsSubmitting(true);
 
     try {
-      await open(mailtoUrl);
-      toast.success('Opening your email client...');
-      handleClose();
-    } catch (err) {
-      console.error('Failed to open email client:', err);
-      toast.error('Failed to open email client. Please use Copy Report instead.');
+      const result = await submitManualReport(data);
+
+      if (actionId !== actionIdRef.current) return;
+
+      if (result.success) {
+        toast.success('Report submitted. Thank you.');
+        handleClose();
+        return;
+      }
+
+      toast.error(result.message || 'Failed to submit report. Please use Copy Report instead.');
+    } finally {
+      if (actionId === actionIdRef.current) {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -150,8 +142,8 @@ export function ReportBugDialog({ isOpen, onClose }: ReportBugDialogProps) {
           </DialogTitle>
           <DialogDescription>
             Tell us what happened. VoiceTypr will include your system info and the
-            latest app log excerpt, then open an email addressed to VoiceTypr Support
-            so you can send it directly to us.
+            latest app log excerpt, then submit the report directly to VoiceTypr
+            Support.
           </DialogDescription>
         </DialogHeader>
 
@@ -206,7 +198,7 @@ export function ReportBugDialog({ isOpen, onClose }: ReportBugDialogProps) {
             <p className="text-xs text-muted-foreground">
               <strong>What is included:</strong> Your message, optional contact info,
               system info (app version, OS, architecture, model), and the latest app
-              log excerpt. The email is addressed to VoiceTypr Support.
+              log excerpt.
             </p>
           </div>
         </div>
@@ -229,13 +221,13 @@ export function ReportBugDialog({ isOpen, onClose }: ReportBugDialogProps) {
             </Button>
             <Button
               size="sm"
-              onClick={handleSubmitEmail}
+              onClick={handleSubmitReport}
               disabled={isSubmitting}
               aria-busy={isSubmitting}
               className="gap-2"
             >
-              <Mail className="h-4 w-4" />
-              {isSubmitting ? 'Gathering...' : 'Email Support'}
+              <Send className="h-4 w-4" />
+              {isSubmitting ? 'Gathering...' : 'Submit'}
             </Button>
           </div>
         </DialogFooter>

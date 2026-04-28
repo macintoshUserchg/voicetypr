@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { buildReportBody, type ManualReportData } from './crashReport';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  buildCrashReportPayload,
+  buildManualReportPayload,
+  buildReportBody,
+  submitManualReport,
+  type CrashReportData,
+  type ManualReportData,
+} from './crashReport';
 
 const baseReport: ManualReportData = {
   message: 'The app failed after recording.',
@@ -15,6 +22,27 @@ const baseReport: ManualReportData = {
   logTruncated: false,
   logStatusNote: '',
 };
+
+const baseCrashReport: CrashReportData = {
+  errorMessage: 'Boom',
+  errorStack: 'Error stack',
+  componentStack: 'Component stack',
+  appVersion: '1.12.2',
+  platform: 'macos',
+  osVersion: '15.0',
+  architecture: 'aarch64',
+  currentModel: 'base.en',
+  deviceId: 'device-123',
+  timestamp: '2026-04-27T00:00:00.000Z',
+  logFileName: 'voicetypr-2026-04-27.log',
+  logContent: 'INFO redacted log line',
+  logTruncated: false,
+  logStatusNote: '',
+};
+
+beforeEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('buildReportBody', () => {
   it('omits the contact section when name and email are blank', () => {
@@ -52,5 +80,80 @@ describe('buildReportBody', () => {
     expect(body).toContain('## Latest App Log');
     expect(body).toContain('> Log omitted from email draft.');
     expect(body).not.toContain('INFO redacted log line');
+  });
+});
+
+
+describe('report submission payloads', () => {
+  it('builds the manual report endpoint payload', () => {
+    expect(buildManualReportPayload(baseReport)).toEqual({
+      kind: 'manual',
+      message: 'The app failed after recording.',
+      environment: {
+        appVersion: '1.12.2',
+        platform: 'macos',
+        osVersion: '15.0',
+        architecture: 'aarch64',
+        currentModel: 'base.en',
+        deviceId: 'device-123',
+        timestamp: '2026-04-27T00:00:00.000Z',
+      },
+      latestLog: {
+        fileName: 'voicetypr-2026-04-27.log',
+        content: 'INFO redacted log line',
+        truncated: false,
+        statusNote: '',
+      },
+    });
+  });
+
+  it('builds the crash report endpoint payload', () => {
+    expect(buildCrashReportPayload(baseCrashReport)).toMatchObject({
+      kind: 'crash',
+      crash: {
+        errorMessage: 'Boom',
+        errorStack: 'Error stack',
+        componentStack: 'Component stack',
+      },
+      environment: {
+        appVersion: '1.12.2',
+        platform: 'macos',
+      },
+      latestLog: {
+        content: 'INFO redacted log line',
+      },
+    });
+  });
+
+  it('submits manual reports to the support endpoint', async () => {
+    global.fetch = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ success: true, message: 'Report submitted' }),
+      { status: 200 }
+    ));
+
+    await expect(submitManualReport(baseReport)).resolves.toEqual({
+      success: true,
+      message: 'Report submitted',
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      'https://voicetypr.com/api/v1/bug-reports',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildManualReportPayload(baseReport)),
+      })
+    );
+  });
+
+  it('returns a failure result when submit fails', async () => {
+    global.fetch = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ success: false, message: 'Too many reports. Please try again later.' }),
+      { status: 429 }
+    ));
+
+    await expect(submitManualReport(baseReport)).resolves.toEqual({
+      success: false,
+      message: 'Too many reports. Please try again later.',
+    });
   });
 });

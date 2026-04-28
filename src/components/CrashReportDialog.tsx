@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { AlertTriangle, Bug, X, Copy, Check, ExternalLink } from 'lucide-react';
-import { open } from '@tauri-apps/plugin-shell';
+import { AlertTriangle, X, Copy, Check, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -15,7 +14,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   CrashReportData,
   gatherCrashReportData,
-  generateGitHubIssueUrl,
+  submitCrashReport,
 } from '@/utils/crashReport';
 
 interface CrashReportDialogProps {
@@ -37,6 +36,7 @@ export function CrashReportDialog({
 }: CrashReportDialogProps) {
   const [crashData, setCrashData] = useState<CrashReportData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -48,16 +48,21 @@ export function CrashReportDialog({
     }
   }, [isOpen, error, componentStack, currentModel]);
 
-  const handleReportBug = async () => {
+  const handleSubmitReport = async () => {
     if (!crashData) return;
 
+    setIsSubmitting(true);
     try {
-      const url = generateGitHubIssueUrl(crashData);
-      await open(url);
-      toast.success('Opening GitHub in browser...');
-    } catch (err) {
-      console.error('Failed to open GitHub:', err);
-      toast.error('Failed to open browser');
+      const result = await submitCrashReport(crashData);
+      if (result.success) {
+        toast.success('Crash report submitted. Thank you.');
+        onClose();
+        return;
+      }
+
+      toast.error(result.message || 'Failed to submit crash report. Please copy the details instead.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -92,7 +97,8 @@ Timestamp: ${crashData.timestamp}`;
             Something went wrong
           </DialogTitle>
           <DialogDescription>
-            An unexpected error occurred. You can report this issue to help us fix it.
+            VoiceTypr hit an unexpected error. Submit a crash report with system info
+            and the latest app log so we can fix it.
           </DialogDescription>
         </DialogHeader>
 
@@ -164,7 +170,7 @@ Timestamp: ${crashData.timestamp}`;
             variant="outline"
             size="sm"
             onClick={handleCopyDetails}
-            disabled={!crashData}
+            disabled={!crashData || isSubmitting}
             className="gap-2"
           >
             {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
@@ -173,23 +179,23 @@ Timestamp: ${crashData.timestamp}`;
 
           <div className="flex gap-2 sm:ml-auto">
             {onRetry && (
-              <Button variant="outline" size="sm" onClick={onRetry}>
+              <Button variant="outline" size="sm" onClick={onRetry} disabled={isSubmitting}>
                 Try Again
               </Button>
             )}
-            <Button variant="ghost" size="sm" onClick={onClose}>
+            <Button variant="ghost" size="sm" onClick={onClose} disabled={isSubmitting}>
               <X className="h-4 w-4 mr-1" />
               Dismiss
             </Button>
             <Button
               size="sm"
-              onClick={handleReportBug}
-              disabled={!crashData}
+              onClick={handleSubmitReport}
+              disabled={!crashData || isLoading || isSubmitting}
+              aria-busy={isSubmitting}
               className="gap-2"
             >
-              <Bug className="h-4 w-4" />
-              Report Bug
-              <ExternalLink className="h-3 w-3" />
+              <Send className="h-4 w-4" />
+              {isSubmitting ? 'Submitting...' : 'Submit'}
             </Button>
           </div>
         </DialogFooter>
