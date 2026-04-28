@@ -88,13 +88,16 @@ export function ReportBugDialog({ isOpen, onClose }: ReportBugDialogProps) {
     return true;
   };
 
-  const buildAndGather = async (
-    { keepSubmitting = false }: { keepSubmitting?: boolean } = {}
-  ): Promise<ManualReportData | null> => {
+  useEffect(() => {
+    if (isOpen) {
+      actionIdRef.current += 1;
+      resetForm();
+    }
+  }, [isOpen]);
+
+  const buildAndGather = async (actionId: number): Promise<ManualReportData | null> => {
     if (!validate()) return null;
 
-    const actionId = actionIdRef.current + 1;
-    actionIdRef.current = actionId;
     resetSubmitFallback();
     setIsSubmitting(true);
 
@@ -113,24 +116,19 @@ export function ReportBugDialog({ isOpen, onClose }: ReportBugDialogProps) {
         toast.error('Failed to gather report data');
       }
       return null;
-    } finally {
-      if (actionId === actionIdRef.current && !keepSubmitting) {
-        setIsSubmitting(false);
-      }
     }
   };
 
   const handleSubmitReport = async () => {
-    const expectedActionId = actionIdRef.current + 1;
-    const data = await buildAndGather({ keepSubmitting: true });
+    const actionId = actionIdRef.current + 1;
+    actionIdRef.current = actionId;
+    const data = await buildAndGather(actionId);
     if (!data) {
-      if (actionIdRef.current === expectedActionId) {
+      if (actionIdRef.current === actionId) {
         setIsSubmitting(false);
       }
       return;
     }
-
-    const actionId = actionIdRef.current;
 
     try {
       const result = await submitManualReport(data);
@@ -231,6 +229,7 @@ export function ReportBugDialog({ isOpen, onClose }: ReportBugDialogProps) {
                 if (submitError) resetSubmitFallback();
               }}
               rows={5}
+              maxLength={5000}
               aria-required="true"
               aria-invalid={Boolean(messageError)}
               aria-describedby={messageError ? 'report-message-error' : undefined}

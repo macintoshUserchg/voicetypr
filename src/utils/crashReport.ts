@@ -298,12 +298,16 @@ interface ApiResponseBody {
   message?: string;
 }
 
+const BUG_REPORT_TIMEOUT_MS = 15_000;
+
+
 async function submitBugReport(payload: BugReportPayload): Promise<ReportSubmitResult> {
   try {
     const response = await fetch(BUG_REPORT_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(BUG_REPORT_TIMEOUT_MS),
     });
 
     const responseBody = await response.json().catch(() => null) as ApiResponseBody | null;

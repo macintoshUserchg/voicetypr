@@ -156,6 +156,8 @@ describe('report submission payloads', () => {
         body: JSON.stringify(buildManualReportPayload(baseReport)),
       })
     );
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
   });
 
   it('submits crash reports to the support endpoint', async () => {

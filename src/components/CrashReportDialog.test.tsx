@@ -120,11 +120,15 @@ describe('CrashReportDialog', () => {
     expect(await screen.findByRole('button', { name: /copy details/i })).toBeEnabled();
 
     await user.click(screen.getByRole('button', { name: /dismiss/i }));
+    vi.mocked(gatherCrashReportData).mockResolvedValueOnce({
+      ...crashData,
+      errorMessage: 'New boom',
+    });
     rerender(<CrashReportDialog error={new Error('New boom')} isOpen={false} onClose={vi.fn()} />);
     rerender(<CrashReportDialog error={new Error('New boom')} isOpen onClose={vi.fn()} />);
 
     expect(screen.queryByRole('button', { name: /copy details/i })).not.toBeInTheDocument();
-    expect(await screen.findByText('Cannot read properties of undefined')).toBeInTheDocument();
+    expect(await screen.findByText('New boom')).toBeInTheDocument();
   });
 
   it('preserves Try Again behavior', async () => {

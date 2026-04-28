@@ -162,9 +162,8 @@ pub fn read_log_tail(
     path: &std::path::Path,
     max_bytes: u64,
 ) -> std::io::Result<(String, u64, bool)> {
-    let file_len = std::fs::metadata(path)?.len();
-
     let mut file = std::fs::File::open(path)?;
+    let file_len = file.metadata()?.len();
     let mut bytes = Vec::new();
 
     if file_len <= max_bytes {
