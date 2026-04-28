@@ -203,6 +203,7 @@ export function buildReportBody(
     parts.push('');
     parts.push(`> ${options.omittedLogNote}`);
   } else if (data.logStatusNote) {
+    parts.push('## Latest App Log');
     parts.push('');
     parts.push(`> ${data.logStatusNote}`);
   }
@@ -294,6 +295,11 @@ export async function submitCrashReport(data: CrashReportData): Promise<ReportSu
   return submitBugReport(buildCrashReportPayload(data));
 }
 
+interface ApiResponseBody {
+  success?: boolean;
+  message?: string;
+}
+
 async function submitBugReport(payload: BugReportPayload): Promise<ReportSubmitResult> {
   try {
     const response = await fetch(BUG_REPORT_ENDPOINT, {
@@ -302,9 +308,9 @@ async function submitBugReport(payload: BugReportPayload): Promise<ReportSubmitR
       body: JSON.stringify(payload),
     });
 
-    const responseBody = await response.json().catch(() => null) as { message?: string } | null;
+    const responseBody = await response.json().catch(() => null) as ApiResponseBody | null;
 
-    if (!response.ok) {
+    if (!response.ok || responseBody?.success === false) {
       return {
         success: false,
         message: responseBody?.message || 'Failed to submit report.',

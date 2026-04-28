@@ -95,6 +95,10 @@ mod tests {
 
         // Request a small tail
         let (result, original_len, truncated) = read_log_tail(&path, 200).unwrap();
+        assert!(
+            result.len() <= 200,
+            "tail read exceeded requested byte bound"
+        );
         assert!(truncated);
         assert_eq!(original_len, full_size);
         // Should only contain the last few lines

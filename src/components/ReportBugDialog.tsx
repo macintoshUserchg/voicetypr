@@ -239,8 +239,8 @@ export function ReportBugDialog({ isOpen, onClose }: ReportBugDialogProps) {
           <div className="rounded-md bg-muted/50 border border-border/40 p-3">
             <p className="text-xs text-muted-foreground">
               <strong>What is included:</strong> Your message, optional contact info,
-              system info (app version, OS, architecture, model), and the latest app
-              log excerpt.
+              system info (app version, OS, architecture, model, anonymous device ID),
+              and the latest app log excerpt.
             </p>
           </div>
           {submitError && (

@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MockInstance } from 'vitest';
 import { CrashReportDialog } from './CrashReportDialog';
 import { gatherCrashReportData, submitCrashReport } from '@/utils/crashReport';
 import { toast } from 'sonner';
@@ -34,11 +35,20 @@ const crashData = {
   logStatusNote: '',
 };
 
+let writeTextMock: MockInstance<(data: string) => Promise<void>>;
+
 describe('CrashReportDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(gatherCrashReportData).mockResolvedValue(crashData);
     vi.mocked(submitCrashReport).mockResolvedValue({ success: true, message: 'Report submitted' });
+    if (!navigator.clipboard) {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: async () => undefined },
+      });
+    }
+    writeTextMock = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
   });
 
   it('does not show copy fallback before a submit failure', async () => {
@@ -89,6 +99,32 @@ describe('CrashReportDialog', () => {
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: /copy details/i })).toBeEnabled();
     expect(screen.getByText(/copy the crash details/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /copy details/i }));
+    await waitFor(() => {
+      expect(writeTextMock).toHaveBeenCalledWith(expect.stringContaining('INFO log line'));
+    });
+  });
+
+  it('clears failed-submit fallback between dialog sessions', async () => {
+    const user = userEvent.setup();
+    vi.mocked(submitCrashReport).mockResolvedValueOnce({
+      success: false,
+      message: 'Too many reports. Please try again later.',
+    });
+
+    const { rerender } = render(<CrashReportDialog error={new Error('Boom')} isOpen onClose={vi.fn()} />);
+
+    expect(await screen.findByText('Cannot read properties of undefined')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /submit/i }));
+    expect(await screen.findByRole('button', { name: /copy details/i })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: /dismiss/i }));
+    rerender(<CrashReportDialog error={new Error('New boom')} isOpen={false} onClose={vi.fn()} />);
+    rerender(<CrashReportDialog error={new Error('New boom')} isOpen onClose={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: /copy details/i })).not.toBeInTheDocument();
+    expect(await screen.findByText('Cannot read properties of undefined')).toBeInTheDocument();
   });
 
   it('preserves Try Again behavior', async () => {

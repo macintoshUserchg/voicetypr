@@ -81,6 +81,18 @@ describe('buildReportBody', () => {
     expect(body).toContain('> Log omitted from email draft.');
     expect(body).not.toContain('INFO redacted log line');
   });
+
+  it('labels latest log status notes without log content', () => {
+    const body = buildReportBody({
+      ...baseReport,
+      logFileName: null,
+      logContent: '',
+      logStatusNote: 'No log file found.',
+    });
+
+    expect(body).toContain('## Latest App Log');
+    expect(body).toContain('> No log file found.');
+  });
 });
 
 
@@ -154,6 +166,18 @@ describe('report submission payloads', () => {
     await expect(submitManualReport(baseReport)).resolves.toEqual({
       success: false,
       message: 'Too many reports. Please try again later.',
+    });
+  });
+
+  it('honors 2xx API envelopes that report failure', async () => {
+    global.fetch = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ success: false, message: 'Webhook misconfigured.' }),
+      { status: 200 }
+    ));
+
+    await expect(submitManualReport(baseReport)).resolves.toEqual({
+      success: false,
+      message: 'Webhook misconfigured.',
     });
   });
 });

@@ -178,7 +178,7 @@ pub fn read_log_tail(
     use std::io::{Seek, SeekFrom};
     let seek_pos = file_len.saturating_sub(max_bytes);
     file.seek(SeekFrom::Start(seek_pos))?;
-    file.read_to_end(&mut bytes)?;
+    file.by_ref().take(max_bytes).read_to_end(&mut bytes)?;
 
     // Prefer complete log lines when possible, but keep the tail when it is one long line.
     let bytes = match bytes.iter().position(|byte| *byte == b'\n') {

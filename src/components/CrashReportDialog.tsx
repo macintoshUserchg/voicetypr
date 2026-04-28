@@ -40,6 +40,7 @@ export function CrashReportDialog({
   const [submitError, setSubmitError] = useState('');
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const actionIdRef = useRef(0);
 
   const clearCopyTimer = () => {
     if (copiedTimerRef.current) {
@@ -48,17 +49,69 @@ export function CrashReportDialog({
     }
   };
 
+  const resetState = () => {
+    setCrashData(null);
+    setIsLoading(true);
+    setIsSubmitting(false);
+    setSubmitError('');
+    setCopied(false);
+    clearCopyTimer();
+  };
+
+  const handleClose = () => {
+    actionIdRef.current += 1;
+    resetState();
+    onClose();
+  };
+
+  const buildCopyDetails = (data: CrashReportData): string => {
+    const parts = [
+      `Error: ${data.errorMessage}`,
+      `Stack: ${data.errorStack || 'N/A'}`,
+      `App Version: ${data.appVersion}`,
+      `Platform: ${data.platform} ${data.osVersion}`,
+      `Architecture: ${data.architecture}`,
+      `Model: ${data.currentModel || 'None'}`,
+      `Timestamp: ${data.timestamp}`,
+    ];
+
+    if (data.logContent) {
+      parts.push('', 'Latest App Log:', data.logContent);
+    } else if (data.logStatusNote) {
+      parts.push('', `Latest App Log: ${data.logStatusNote}`);
+    }
+
+    return parts.join('\n');
+  };
+
+
   useEffect(() => {
     return () => clearCopyTimer();
   }, []);
 
   useEffect(() => {
-    if (isOpen && error) {
-      gatherCrashReportData(error, componentStack, currentModel)
-        .then(setCrashData)
-        .catch(console.error)
-        .finally(() => setIsLoading(false));
-    }
+    if (!isOpen || !error) return;
+
+    const actionId = actionIdRef.current + 1;
+    actionIdRef.current = actionId;
+    resetState();
+
+    gatherCrashReportData(error, componentStack, currentModel)
+      .then((data) => {
+        if (actionId === actionIdRef.current) {
+          setCrashData(data);
+        }
+      })
+      .catch((err) => {
+        if (actionId === actionIdRef.current) {
+          console.error(err);
+        }
+      })
+      .finally(() => {
+        if (actionId === actionIdRef.current) {
+          setIsLoading(false);
+        }
+      });
   }, [isOpen, error, componentStack, currentModel]);
 
   const handleSubmitReport = async () => {
@@ -67,32 +120,31 @@ export function CrashReportDialog({
     setSubmitError('');
     setCopied(false);
     clearCopyTimer();
+    const actionId = actionIdRef.current;
     setIsSubmitting(true);
     try {
       const result = await submitCrashReport(crashData);
+      if (actionId !== actionIdRef.current) return;
+
       if (result.success) {
         toast.success('Crash report submitted. Thank you.');
-        onClose();
+        handleClose();
         return;
       }
 
       setSubmitError(result.message || 'Failed to submit crash report. You can copy the details and send them manually.');
       toast.error(result.message || 'Failed to submit crash report. Please copy the details instead.');
     } finally {
-      setIsSubmitting(false);
+      if (actionId === actionIdRef.current) {
+        setIsSubmitting(false);
+      }
     }
   };
 
   const handleCopyDetails = async () => {
     if (!crashData) return;
 
-    const details = `Error: ${crashData.errorMessage}
-Stack: ${crashData.errorStack || 'N/A'}
-App Version: ${crashData.appVersion}
-Platform: ${crashData.platform} ${crashData.osVersion}
-Architecture: ${crashData.architecture}
-Model: ${crashData.currentModel || 'None'}
-Timestamp: ${crashData.timestamp}`;
+    const details = buildCopyDetails(crashData);
 
     try {
       await navigator.clipboard.writeText(details);
@@ -110,7 +162,7 @@ Timestamp: ${crashData.timestamp}`;
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-destructive">
@@ -216,7 +268,7 @@ Timestamp: ${crashData.timestamp}`;
                 Try Again
               </Button>
             )}
-            <Button variant="ghost" size="sm" onClick={onClose} disabled={isSubmitting}>
+            <Button variant="ghost" size="sm" onClick={handleClose} disabled={isSubmitting}>
               <X className="h-4 w-4 mr-1" />
               Dismiss
             </Button>

@@ -73,6 +73,7 @@ describe('ReportBugDialog', () => {
     render(<ReportBugDialog isOpen onClose={vi.fn()} />);
 
     expect(screen.queryByRole('button', { name: /copy report/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/anonymous device ID/i)).toBeInTheDocument();
   });
 
   it('submits a report directly to support', async () => {
