@@ -66,6 +66,7 @@ describe('buildReportBody', () => {
     expect(body).toContain('Name: Moin');
     expect(body).toContain('Email: moin@example.com');
     expect(body).toContain('| App Version | 1.12.2 |');
+    expect(body).toContain('| Device ID | device-123 |');
     expect(body).toContain('| Platform | macos |');
     expect(body).toContain('_The log was truncated. Only the most recent entries are included._');
     expect(body).toContain('_Source: voicetypr-2026-04-27.log_');

@@ -165,6 +165,7 @@ export function buildReportBody(data: ManualReportData): string {
   parts.push(`| OS Version | ${data.osVersion} |`);
   parts.push(`| Architecture | ${data.architecture} |`);
   parts.push(`| Current Model | ${data.currentModel || 'None'} |`);
+  parts.push(`| Device ID | ${data.deviceId} |`);
   parts.push(`| Timestamp | ${data.timestamp} |`);
   parts.push('');
 

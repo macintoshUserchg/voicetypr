@@ -271,7 +271,7 @@ export function CrashReportDialog({
                 Try Again
               </Button>
             )}
-            <Button variant="ghost" size="sm" onClick={handleClose} disabled={isSubmitting}>
+            <Button variant="ghost" size="sm" onClick={handleClose}>
               <X className="h-4 w-4 mr-1" />
               Dismiss
             </Button>
