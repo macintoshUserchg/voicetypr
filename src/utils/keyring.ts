@@ -42,11 +42,10 @@ export const saveApiKey = async (provider: string, apiKey: string): Promise<void
   await keyringSet(key, apiKey);
   
   // Cache or validate depending on provider
-  let validated = false;
-  if (provider === 'openai') {
+  const validated = provider === 'openai';
+  if (validated) {
     // OpenAI-compatible requires validation (may include no-auth path via separate modal)
     await invoke('validate_and_cache_api_key', { args: { provider, apiKey } });
-    validated = true;
   } else {
     await invoke('cache_ai_api_key', { args: { provider, apiKey } });
   }

@@ -1069,15 +1069,16 @@ pub async fn list_provider_models(
     provider: String,
     _app: tauri::AppHandle,
 ) -> Result<Vec<ProviderModel>, String> {
-    // Validate provider
-    if !["openai", "gemini", "anthropic"].contains(&provider.as_str()) {
+    // Drift-proof gate: a provider supports model listing iff it has a curated
+    // models entry in get_curated_models. Adding a new entry there is enough.
+    let models = get_curated_models(&provider);
+    if models.is_empty() {
         return Err(format!(
             "Unsupported provider for model listing: {}",
             provider
         ));
     }
 
-    let models = get_curated_models(&provider);
     log::info!(
         "Returning {} curated models for provider {}",
         models.len(),
@@ -1135,7 +1136,11 @@ mod tests {
         assert!(anthropic_models.iter().any(|m| m.id == "claude-haiku-4-5"));
         assert!(anthropic_models.iter().any(|m| m.id == "claude-sonnet-4-6"));
 
-        // Unknown provider returns empty list
+        // The list_provider_models gate uses is_empty() on this return,
+        // so providers without curated models (e.g. "custom", or anything
+        // unknown) get a model-listing error.
+        let custom_models = get_curated_models("custom");
+        assert!(custom_models.is_empty());
         let unknown_models = get_curated_models("unknown");
         assert!(unknown_models.is_empty());
     }
