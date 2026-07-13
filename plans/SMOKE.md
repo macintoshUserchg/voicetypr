@@ -9,6 +9,23 @@ Run on a real macOS machine via `pnpm tauri:dev` (item 16-S8 needs a Windows
 build). Check each box with date + result; on failure, file the failure
 against the named plan instead of hot-fixing inline.
 
+## Plan 030 — Windows crash dependencies (NEEDS-SMOKE)
+
+Run these on the signed Windows Beta 4 build. Keep Bugsink open for recurrence
+of the `flush_paint_messages` assertion and invalid-monitor-handle error 1461.
+
+- [ ] 030-S1 With the tray menu and pill alternately open and closed, put a
+      Bluetooth device to sleep, wake it, disconnect it, and reconnect it;
+      repeat while connecting/disconnecting a VPN or network adapter → app
+      stays alive, tray actions still work, no matching Bugsink panic.
+- [ ] 030-S2 Hot-plug/unplug a secondary monitor and sleep/wake the displays
+      while showing/hiding the main window and pill → app stays alive and
+      windows remain reachable.
+- [ ] 030-S3 Change the primary display and move the pill/main window between
+      displays with different DPI/scaling → placement updates without panic.
+- [ ] 030-S4 Normal regression: record, transcribe, paste, open tray settings,
+      then quit from the tray → unchanged behavior.
+
 ## Plan 004 — cancel during `Starting` (code at `9868fdc` era, NEEDS-SMOKE)
 
 - [ ] 004-S1 Toggle mode: record hotkey, immediately press Escape repeatedly
