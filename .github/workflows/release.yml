@@ -235,6 +235,48 @@ jobs:
           path: artifacts/
           retention-days: 5
 
+      - name: Upload debug symbols to GlitchTip
+        env:
+          GLITCHTIP_AUTH_TOKEN: ${{ secrets.GLITCHTIP_AUTH_TOKEN }}
+        run: |
+          if [ -z "$GLITCHTIP_AUTH_TOKEN" ]; then
+            echo "::notice::GLITCHTIP_AUTH_TOKEN not configured; skipping debug symbol upload."
+            exit 0
+          fi
+
+          EXECUTABLE="src-tauri/target/aarch64-apple-darwin/release/voicetypr"
+          DSYM="${EXECUTABLE}.dSYM"
+
+          if [ ! -f "$EXECUTABLE" ]; then
+            echo "::error::Expected executable not found: $EXECUTABLE"
+            exit 1
+          fi
+
+          # Generate dSYM from the built executable (idempotent if the build already produced one)
+          /usr/bin/dsymutil "$EXECUTABLE"
+
+          if [ ! -d "$DSYM" ]; then
+            echo "::error::Failed to generate dSYM: $DSYM"
+            exit 1
+          fi
+
+          DEBUG_FILE="$DSYM/Contents/Resources/DWARF/voicetypr"
+          if [ ! -f "$DEBUG_FILE" ]; then
+            echo "::error::Expected dSYM payload not found: $DEBUG_FILE"
+            exit 1
+          fi
+
+          cargo install glitchtip-cli --version 1.0.0 --locked
+
+          export SENTRY_URL="https://glitchtip.ideaplexa.com"
+          export SENTRY_AUTH_TOKEN="$GLITCHTIP_AUTH_TOKEN"
+          export SENTRY_ORG="ideaplexa"
+          export SENTRY_PROJECT="voicetypr-desktop"
+
+          echo "Checking and uploading debug symbols for aarch64 from: $DSYM"
+          glitchtip-cli debug-files check "$DEBUG_FILE"
+          glitchtip-cli debug-files upload --wait "$DSYM"
+
   # ===========================================
   # Build macOS (x86_64 - Intel)
   # ===========================================
@@ -358,6 +400,48 @@ jobs:
           name: macos-x86_64
           path: artifacts/
           retention-days: 5
+
+      - name: Upload debug symbols to GlitchTip
+        env:
+          GLITCHTIP_AUTH_TOKEN: ${{ secrets.GLITCHTIP_AUTH_TOKEN }}
+        run: |
+          if [ -z "$GLITCHTIP_AUTH_TOKEN" ]; then
+            echo "::notice::GLITCHTIP_AUTH_TOKEN not configured; skipping debug symbol upload."
+            exit 0
+          fi
+
+          EXECUTABLE="src-tauri/target/x86_64-apple-darwin/release/voicetypr"
+          DSYM="${EXECUTABLE}.dSYM"
+
+          if [ ! -f "$EXECUTABLE" ]; then
+            echo "::error::Expected executable not found: $EXECUTABLE"
+            exit 1
+          fi
+
+          # Generate dSYM from the built executable (idempotent if the build already produced one)
+          /usr/bin/dsymutil "$EXECUTABLE"
+
+          if [ ! -d "$DSYM" ]; then
+            echo "::error::Failed to generate dSYM: $DSYM"
+            exit 1
+          fi
+
+          DEBUG_FILE="$DSYM/Contents/Resources/DWARF/voicetypr"
+          if [ ! -f "$DEBUG_FILE" ]; then
+            echo "::error::Expected dSYM payload not found: $DEBUG_FILE"
+            exit 1
+          fi
+
+          cargo install glitchtip-cli --version 1.0.0 --locked
+
+          export SENTRY_URL="https://glitchtip.ideaplexa.com"
+          export SENTRY_AUTH_TOKEN="$GLITCHTIP_AUTH_TOKEN"
+          export SENTRY_ORG="ideaplexa"
+          export SENTRY_PROJECT="voicetypr-desktop"
+
+          echo "Checking and uploading debug symbols for x86_64 from: $DSYM"
+          glitchtip-cli debug-files check "$DEBUG_FILE"
+          glitchtip-cli debug-files upload --wait "$DSYM"
 
   # ===========================================
   # Build Windows x86_64 (CPU-safe app + optional Vulkan sidecar)
@@ -557,6 +641,36 @@ jobs:
           name: windows-x64
           path: artifacts/
           retention-days: 5
+
+      - name: Upload debug symbols to GlitchTip
+        env:
+          GLITCHTIP_AUTH_TOKEN: ${{ secrets.GLITCHTIP_AUTH_TOKEN }}
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:GLITCHTIP_AUTH_TOKEN)) {
+            Write-Host "::notice::GLITCHTIP_AUTH_TOKEN not configured; skipping debug symbol upload."
+            exit 0
+          }
+
+          $PDB = Join-Path $env:CARGO_TARGET_DIR "x86_64-pc-windows-msvc\release\voicetypr.pdb"
+          if (-not (Test-Path $PDB)) {
+            Write-Host "::error::Expected PDB not found: $PDB - native symbols were not generated."
+            exit 1
+          }
+
+          cargo install glitchtip-cli --version 1.0.0 --locked
+          if ($LASTEXITCODE -ne 0) { throw "cargo install glitchtip-cli failed with exit code $LASTEXITCODE" }
+
+          $env:SENTRY_URL = "https://glitchtip.ideaplexa.com"
+          $env:SENTRY_AUTH_TOKEN = $env:GLITCHTIP_AUTH_TOKEN
+          $env:SENTRY_ORG = "ideaplexa"
+          $env:SENTRY_PROJECT = "voicetypr-desktop"
+
+          Write-Host "Checking and uploading debug symbols for x86_64 from: $PDB"
+          glitchtip-cli debug-files check $PDB
+          if ($LASTEXITCODE -ne 0) { throw "glitchtip-cli debug-files check failed with exit code $LASTEXITCODE" }
+          glitchtip-cli debug-files upload --wait $PDB
+          if ($LASTEXITCODE -ne 0) { throw "glitchtip-cli debug-files upload failed with exit code $LASTEXITCODE" }
 
   # ===========================================
   # Publish: bump version, commit, tag, push

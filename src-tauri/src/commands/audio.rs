@@ -206,6 +206,138 @@ impl Drop for StopInFlightGuard {
         self.0.store(false, AtomicOrdering::SeqCst);
     }
 }
+/// RAII guard that finishes a sampled transcription telemetry transaction on
+/// drop, guaranteeing every started transaction is closed on every
+/// success/error/cancel/early-return path. No-op when the inner transaction
+/// was moved out via [`take`](Self::take). Uses only the closed
+/// `crate::telemetry` API; carries no transcript/audio/path/model data.
+struct TransactionFinishGuard(Option<crate::telemetry::TelemetryTransaction>);
+
+impl TransactionFinishGuard {
+    fn new(txn: Option<crate::telemetry::TelemetryTransaction>) -> Self {
+        Self(txn)
+    }
+
+    /// Start a fixed child span on the wrapped transaction, if present.
+    fn start_span(
+        &self,
+        span: crate::telemetry::TranscriptionSpan,
+    ) -> Option<crate::telemetry::TelemetrySpan> {
+        self.0.as_ref().map(|t| t.start_span(span))
+    }
+
+    fn log_transcription(
+        &self,
+        phase: crate::telemetry::TranscriptionPhase,
+        duration_ms: Option<u64>,
+    ) {
+        crate::telemetry::log_transcription_for_transaction(self.0.as_ref(), phase, duration_ms);
+    }
+
+    /// Move the transaction out, defusing the guard so its drop is a no-op.
+    fn take(&mut self) -> Option<crate::telemetry::TelemetryTransaction> {
+        self.0.take()
+    }
+}
+
+impl Drop for TransactionFinishGuard {
+    fn drop(&mut self) {
+        if let Some(t) = self.0.take() {
+            t.finish();
+        }
+    }
+}
+
+/// RAII guard that closes a telemetry child span on every return path.
+struct SpanFinishGuard(Option<crate::telemetry::TelemetrySpan>);
+
+impl SpanFinishGuard {
+    fn new(span: Option<crate::telemetry::TelemetrySpan>) -> Self {
+        Self(span)
+    }
+}
+
+impl Drop for SpanFinishGuard {
+    fn drop(&mut self) {
+        if let Some(span) = self.0.take() {
+            span.finish();
+        }
+    }
+}
+
+/// Decode span + terminal outcome. Cancellation is the default so aborting the
+/// Tokio task during an await still emits a terminal lifecycle event.
+struct DecodeTelemetryGuard<'a> {
+    transaction: &'a TransactionFinishGuard,
+    _span: SpanFinishGuard,
+    started: Instant,
+    outcome: crate::telemetry::TranscriptionPhase,
+}
+
+impl<'a> DecodeTelemetryGuard<'a> {
+    fn new(transaction: &'a TransactionFinishGuard) -> Self {
+        Self {
+            transaction,
+            _span: SpanFinishGuard::new(
+                transaction.start_span(crate::telemetry::TranscriptionSpan::Decode),
+            ),
+            started: Instant::now(),
+            outcome: crate::telemetry::TranscriptionPhase::DecodeCancelled,
+        }
+    }
+
+    fn set_outcome(&mut self, outcome: crate::telemetry::TranscriptionPhase) {
+        self.outcome = outcome;
+    }
+}
+
+impl Drop for DecodeTelemetryGuard<'_> {
+    fn drop(&mut self) {
+        self.transaction.log_transcription(
+            self.outcome,
+            Some(self.started.elapsed().as_millis() as u64),
+        );
+    }
+}
+
+/// Delivery span + terminal outcome. Failure is the conservative default, so
+/// cancellation and every early return are recorded without duplicating the
+/// user's text or error details.
+struct DeliveryTelemetryGuard<'a> {
+    transaction: &'a TransactionFinishGuard,
+    _span: SpanFinishGuard,
+    started: Instant,
+    succeeded: bool,
+}
+
+impl<'a> DeliveryTelemetryGuard<'a> {
+    fn new(transaction: &'a TransactionFinishGuard) -> Self {
+        Self {
+            transaction,
+            _span: SpanFinishGuard::new(
+                transaction.start_span(crate::telemetry::TranscriptionSpan::Delivery),
+            ),
+            started: Instant::now(),
+            succeeded: false,
+        }
+    }
+
+    fn mark_succeeded(&mut self) {
+        self.succeeded = true;
+    }
+}
+
+impl Drop for DeliveryTelemetryGuard<'_> {
+    fn drop(&mut self) {
+        let phase = if self.succeeded {
+            crate::telemetry::TranscriptionPhase::DeliverySucceeded
+        } else {
+            crate::telemetry::TranscriptionPhase::DeliveryFailed
+        };
+        self.transaction
+            .log_transcription(phase, Some(self.started.elapsed().as_millis() as u64));
+    }
+}
 
 /// If `stop_recording` finds no active recorder, only force Idle when the
 /// caller entered from a state that is not already owned by stop/transcribe.
@@ -4282,6 +4414,10 @@ pub async fn start_recording(
 
     // Update state to recording
     update_recording_state(&app, RecordingState::Recording, None);
+    crate::telemetry::log_transcription(
+        crate::telemetry::TranscriptionPhase::RecordingStarted,
+        None,
+    );
 
     // If a stop was requested while starting (toggle or PTT), honor it immediately
     // after entering Recording state. For PTT, key-up in Starting state sets this flag.
@@ -4649,6 +4785,10 @@ pub async fn stop_recording(
             return Ok("".to_string());
         }
     }
+    crate::telemetry::log_transcription(
+        crate::telemetry::TranscriptionPhase::RecordingStopped,
+        capture_metrics.as_ref().map(|m| m.duration_ms),
+    );
 
     // Decide engine early to optionally skip normalization for cloud providers
     let config = get_recording_config(&app).await.map_err(|e| {
@@ -5129,6 +5269,12 @@ pub async fn stop_recording(
             return;
         }
 
+        let mut telemetry_transaction =
+            TransactionFinishGuard::new(crate::telemetry::start_transcription_transaction());
+        let mut decode_telemetry = DecodeTelemetryGuard::new(&telemetry_transaction);
+        telemetry_transaction
+            .log_transcription(crate::telemetry::TranscriptionPhase::DecodeStarted, None);
+
         let transcription_result: Result<TranscriptionResult, TranscriptionFailure> =
             match &engine_selection_for_task {
                 // Local + cloud run through the shared transcription executor (plan
@@ -5231,6 +5377,17 @@ pub async fn stop_recording(
                     .await
                 }
             };
+        let decode_phase = match &transcription_result {
+            Ok(_) => crate::telemetry::TranscriptionPhase::DecodeSucceeded,
+            Err(TranscriptionFailure::Local(message))
+                if message.contains("cancelled") || message.contains("Cancelled") =>
+            {
+                crate::telemetry::TranscriptionPhase::DecodeCancelled
+            }
+            Err(_) => crate::telemetry::TranscriptionPhase::DecodeFailed,
+        };
+        decode_telemetry.set_outcome(decode_phase);
+        drop(decode_telemetry);
 
         speech_evidence_attempt.set_outcome(if transcription_result.is_ok() {
             SpeechEvidenceOutcome::EngineSuccess
@@ -5378,8 +5535,17 @@ pub async fn stop_recording(
                 let ai_enabled_for_task = ai_enabled;
                 let should_emit_enhancing_for_task = should_emit_enhancing;
                 let recording_file_for_task = recording_file.clone();
+                let telemetry_transaction_for_process = telemetry_transaction.take();
 
                 tokio::spawn(async move {
+                    let telemetry_transaction =
+                        TransactionFinishGuard::new(telemetry_transaction_for_process);
+                    let formatting_started = Instant::now();
+                    let formatting_span = SpanFinishGuard::new(
+                        telemetry_transaction
+                            .start_span(crate::telemetry::TranscriptionSpan::Formatting),
+                    );
+
                     // 1. Process the transcription and enhancement
                     let (final_text, writing_metadata, should_deliver, writing_succeeded) =
                         match crate::writing::process_transcription(
@@ -5529,6 +5695,15 @@ pub async fn stop_recording(
                                 (text_for_process.clone(), None, false, false)
                             }
                         };
+                    drop(formatting_span);
+                    telemetry_transaction.log_transcription(
+                        if writing_succeeded {
+                            crate::telemetry::TranscriptionPhase::FormattingSucceeded
+                        } else {
+                            crate::telemetry::TranscriptionPhase::FormattingFailed
+                        },
+                        Some(formatting_started.elapsed().as_millis() as u64),
+                    );
 
                     // 2. Hide pill window first, then insert text with reduced delay
                     let app_state = app_for_process.state::<AppState>();
@@ -5578,6 +5753,9 @@ pub async fn stop_recording(
                         update_recording_state(&app_for_process, RecordingState::Idle, None);
                         return;
                     }
+
+                    let mut delivery_telemetry =
+                        DeliveryTelemetryGuard::new(&telemetry_transaction);
 
                     // Now handle text insertion or clipboard copy based on auto_paste_transcription.
                     // Missing setting keys default inside get_settings; actual settings-read failures fail closed
@@ -5644,7 +5822,10 @@ pub async fn stop_recording(
                             return;
                         };
                         match insert_future.await {
-                            Ok(_) => log::debug!("Text inserted at cursor successfully"),
+                            Ok(_) => {
+                                delivery_telemetry.mark_succeeded();
+                                log::debug!("Text inserted at cursor successfully");
+                            }
                             Err(e) => {
                                 log::error!("Failed to insert text: {}", e);
 
@@ -5688,6 +5869,7 @@ pub async fn stop_recording(
                         };
                         match copy_future.await {
                             Ok(_) => {
+                                delivery_telemetry.mark_succeeded();
                                 log::debug!("Text copied to clipboard (auto-paste disabled)");
                                 pill_toast(&app_for_process, "Transcription copied", 1500);
                             }
@@ -7030,11 +7212,19 @@ pub async fn cancel_recording(app: AppHandle) -> Result<(), String> {
         if let Ok(path_guard) = app_state.current_recording_path.lock() {
             if let Some(audio_path) = path_guard.as_ref() {
                 log::info!("Removing cancelled recording file");
+
                 if let Err(e) = std::fs::remove_file(audio_path) {
                     log::warn!("Failed to remove cancelled recording: {}", e);
                 }
             }
         }
+    }
+
+    if matches!(current_state, RecordingState::Recording) {
+        crate::telemetry::log_transcription(
+            crate::telemetry::TranscriptionPhase::RecordingCancelled,
+            None,
+        );
     }
 
     // Resume system media if we paused it
