@@ -266,7 +266,7 @@ jobs:
             exit 1
           fi
 
-          cargo install glitchtip-cli --version 1.0.0 --locked
+          node .github/scripts/install-glitchtip-cli.mjs
 
           export SENTRY_URL="https://glitchtip.ideaplexa.com"
           export SENTRY_AUTH_TOKEN="$GLITCHTIP_AUTH_TOKEN"
@@ -432,7 +432,7 @@ jobs:
             exit 1
           fi
 
-          cargo install glitchtip-cli --version 1.0.0 --locked
+          node .github/scripts/install-glitchtip-cli.mjs
 
           export SENTRY_URL="https://glitchtip.ideaplexa.com"
           export SENTRY_AUTH_TOKEN="$GLITCHTIP_AUTH_TOKEN"
@@ -658,8 +658,8 @@ jobs:
             exit 1
           }
 
-          cargo install glitchtip-cli --version 1.0.0 --locked
-          if ($LASTEXITCODE -ne 0) { throw "cargo install glitchtip-cli failed with exit code $LASTEXITCODE" }
+          node .github/scripts/install-glitchtip-cli.mjs
+          if ($LASTEXITCODE -ne 0) { throw "GlitchTip CLI install failed with exit code $LASTEXITCODE" }
 
           $env:SENTRY_URL = "https://glitchtip.ideaplexa.com"
           $env:SENTRY_AUTH_TOKEN = $env:GLITCHTIP_AUTH_TOKEN

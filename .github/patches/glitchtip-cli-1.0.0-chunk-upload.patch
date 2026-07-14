@@ -1,0 +1,86 @@
+--- a/src/commands/debug_files.rs
++++ b/src/commands/debug_files.rs
+@@ -106,6 +106,11 @@
+         .get_chunk_upload_info(org)
+         .await
+         .context("Failed to get chunk upload info")?;
++    let chunk_size = usize::try_from(upload_info.chunk_size)
++        .context("Server chunk size does not fit this platform")?;
++    if chunk_size == 0 {
++        anyhow::bail!("Server advertised a zero-byte chunk size");
++    }
+
+     let mut uploaded = 0;
+     let mut errors = 0;
+@@ -132,22 +137,38 @@
+         // Compute SHA1 checksum of original file
+         let checksum = sha1_hex(&data);
+
+-        // Gzip compress
+-        let compressed = gzip_compress(&data)?;
+-        // Upload chunk
+-        match client
+-            .upload_chunk(&upload_info.url, compressed, &checksum)
+-            .await
+-        {
+-            Ok(()) => {
+-                println!("  Uploaded chunk for: {display_name}");
+-                uploaded += 1;
+-            }
+-            Err(e) => {
+-                eprintln!("  Error uploading {display_name}: {e}");
+-                errors += 1;
+-                continue;
+-            }
++        let chunks = data.chunks(chunk_size);
++        let chunk_count = chunks.len();
++        let mut chunk_checksums = Vec::with_capacity(chunk_count);
++        let mut upload_failed = false;
++
++        for (index, chunk) in chunks.enumerate() {
++            let chunk_checksum = sha1_hex(chunk);
++            let compressed = gzip_compress(chunk)?;
++            match client
++                .upload_chunk(&upload_info.url, compressed, &chunk_checksum)
++                .await
++            {
++                Ok(()) => {
++                    println!(
++                        "  Uploaded chunk {}/{} for: {display_name}",
++                        index + 1,
++                        chunk_count
++                    );
++                    uploaded += 1;
++                    chunk_checksums.push(chunk_checksum);
++                }
++                Err(e) => {
++                    eprintln!("  Error uploading {display_name}: {e}");
++                    errors += 1;
++                    upload_failed = true;
++                    break;
++                }
++            }
++        }
++
++        if upload_failed {
++            continue;
+         }
+
+         checksum_to_name.insert(checksum.clone(), display_name.clone());
+@@ -156,12 +177,15 @@
+             DifAssembleFile {
+                 name: display_name,
+                 debug_id: dif_info.debug_id.clone(),
+-                chunks: vec![checksum],
++                chunks: chunk_checksums,
+             },
+         );
+     }
+
+     if assemble_files.is_empty() {
+         println!("No files to assemble.");
++        if errors > 0 {
++            anyhow::bail!("{errors} file(s) had errors");
++        }
+         return Ok(());
+     }
